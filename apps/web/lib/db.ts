@@ -19,7 +19,7 @@ export function getDb(): Database.Database {
 
 function initSchema(db: Database.Database) {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS ringtones (
+    CREATE TABLE IF NOT EXISTS ai_ringtones (
       id TEXT PRIMARY KEY,
       created_at TEXT NOT NULL,
       prompt TEXT NOT NULL,
@@ -37,8 +37,8 @@ function initSchema(db: Database.Database) {
       downloads INTEGER DEFAULT 0,
       is_public INTEGER DEFAULT 1
     );
-    CREATE INDEX IF NOT EXISTS idx_ringtones_status ON ringtones(status);
-    CREATE INDEX IF NOT EXISTS idx_ringtones_public ON ringtones(is_public, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ai_ringtones_status ON ai_ringtones(status);
+    CREATE INDEX IF NOT EXISTS idx_ai_ringtones_public ON ai_ringtones(is_public, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS genres (
       id TEXT PRIMARY KEY,
@@ -79,14 +79,14 @@ export function getGenres(): Genre[] {
 
 export function getRecentRingtones(limit = 6): Ringtone[] {
   return (getDb()
-    .prepare(`SELECT * FROM ringtones WHERE status = 'completed' AND is_public = 1 ORDER BY created_at DESC LIMIT ?`)
+    .prepare(`SELECT * FROM ai_ringtones WHERE status = 'completed' AND is_public = 1 ORDER BY created_at DESC LIMIT ?`)
     .all(limit) as Record<string, unknown>[])
     .map(rowToRingtone)
 }
 
 export function getRingtoneById(id: string): Ringtone | null {
   const row = getDb()
-    .prepare(`SELECT * FROM ringtones WHERE id = ? AND status = 'completed'`)
+    .prepare(`SELECT * FROM ai_ringtones WHERE id = ? AND status = 'completed'`)
     .get(id) as Record<string, unknown> | undefined
   return row ? rowToRingtone(row) : null
 }
