@@ -18,7 +18,6 @@
  * Public file URL: https://api.testnet.shelby.xyz/shelby/v1/blobs/{account}/{blobName}
  */
 
-import type { Network } from '@aptos-labs/ts-sdk'
 
 // Lazy-initialized clients
 let shelbyClient: import('@shelby-protocol/sdk/node').ShelbyNodeClient | null = null
@@ -30,7 +29,8 @@ async function getShelbyClient() {
   if (!shelbyClient) {
     const { ShelbyNodeClient } = await import('@shelby-protocol/sdk/node')
     shelbyClient = new ShelbyNodeClient({
-      network: (process.env.SHELBY_NETWORK || 'testnet') as Network,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      network: (process.env.SHELBY_NETWORK || 'testnet') as any,
       apiKey: process.env.SHELBY_API_KEY,
     })
   }
