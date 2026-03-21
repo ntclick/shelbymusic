@@ -1,0 +1,16 @@
+node_modules/
+.env.local
+.env
+*.db
+*.db-shm
+*.db-wal
+.claude/
+*.pyc
+__pycache__/
+.venv/
+.modal_secrets
+.next/
+dist/
+out/
+*.log
+.DS_Store
