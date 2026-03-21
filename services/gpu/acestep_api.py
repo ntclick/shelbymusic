@@ -1,6 +1,6 @@
 """
 PhoneZoo AI Ringtone Generator — Modal GPU Backend
-Deploys ACE-Step 1.5 (3.5B) on a T4 GPU via Modal.com serverless.
+Deploys MusicGen-Medium (1.5B) on a T4 GPU via Modal.com serverless.
 
 Storage: controlled by STORAGE_PROVIDER env var in Modal secrets
   - "shelby" → uploads to Shelby testnet (decentralized storage)
@@ -24,28 +24,22 @@ import time
 # ============================================================
 # Container image — built once and cached by Modal
 # ============================================================
-ace_image = (
+musicgen_image = (
     modal.Image.debian_slim(python_version="3.11")
-    .apt_install(["ffmpeg", "libsndfile1", "git"])
+    .apt_install(["ffmpeg"])
     .pip_install([
         "torch==2.2.0",
-        "torchaudio==2.2.0",
+        "transformers>=4.40.0",
+        "accelerate>=0.28.0",
+        "pydub>=0.25.1",
         "boto3>=1.34.0",
         "requests>=2.31.0",
         "fastapi[standard]>=0.100.0",
     ])
-    .run_commands(
-        # ace-step pulls many deps (gradio, spacy, etc.) — install separately
-        # so Modal can cache the base image (torch) independently
-        "pip install git+https://github.com/ace-step/ACE-Step.git || echo 'Warning: ace-step install failed'",
-        # Force numpy<2 AFTER ace-step — the base image has numpy 2.4.3 which
-        # breaks torch 2.2 (compiled with numpy 1.x C ABI).
-        # --no-deps prevents pip from re-upgrading numpy via other packages.
-        "pip install 'numpy==1.26.4' --force-reinstall --no-deps",
-    )
 )
+# No ace-step, no numpy conflict, no spacy/gradio/numba
 
-# Modal Volume to cache the model weights across cold starts (~7GB)
+# Modal Volume to cache the model weights across cold starts (~3GB)
 model_volume = modal.Volume.from_name("phonezoo-model-cache", create_if_missing=True)
 
 app = modal.App("phonezoo-acestep")
@@ -55,47 +49,46 @@ app = modal.App("phonezoo-acestep")
 # ============================================================
 @app.cls(
     gpu="T4",
-    image=ace_image,
+    image=musicgen_image,
     secrets=[modal.Secret.from_name("phonezoo-secrets")],
     volumes={"/model-cache": model_volume},
     scaledown_window=120,  # Keep warm for 2 min after last request
-    timeout=600,          # 10 min: allows cold start model download (~7GB) + generation
+    timeout=300,           # 5 min: cold start model download (~3GB) + generation
 )
 class ACEStepGenerator:
 
     @modal.enter()
     def load_model(self):
-        """Load ACE-Step model into GPU memory on container start."""
+        """Load MusicGen-Medium model into GPU memory on container start."""
         import torch
+        from transformers import MusicgenForConditionalGeneration, AutoProcessor
 
-        print("[ACEStep] Loading model...")
+        print("[MusicGen] Loading model...")
         start = time.time()
 
-        # Correct import path (confirmed from Modal logs: submodule = pipeline_ace_step)
-        from acestep.pipeline_ace_step import ACEStepPipeline
-
-        # float16 is faster than bfloat16 on T4 and numerically equivalent for inference
-        self.pipe = ACEStepPipeline.from_pretrained(
-            "ACE-Step/ACE-Step-v1.5-3.5B",
-            torch_dtype=torch.float16,
+        self.processor = AutoProcessor.from_pretrained(
+            "facebook/musicgen-medium",
             cache_dir="/model-cache",
         )
-        # Keep everything on GPU — T4 has 16GB, no need for cpu_offload (which adds latency)
-        self.pipe.to("cuda")
+        self.model = MusicgenForConditionalGeneration.from_pretrained(
+            "facebook/musicgen-medium",
+            cache_dir="/model-cache",
+        )
+        self.model.to("cuda")
+        self.sample_rate = self.model.config.audio_encoder.sampling_rate  # 32000
 
         elapsed = time.time() - start
-        print(f"[ACEStep] Model loaded in {elapsed:.1f}s")
+        print(f"[MusicGen] Model loaded in {elapsed:.1f}s, sample_rate={self.sample_rate}")
 
     @modal.method()
     def generate(self, payload: dict) -> dict:
         """
-        Run ACE-Step inference and upload result to R2.
+        Run MusicGen inference and upload result to R2.
         Returns {status, audio_url, generation_time_ms} on success
         or {status: 'failed', error} on failure.
         """
         import torch
-        import soundfile as sf
-        import boto3
+        import numpy as np
         import requests
 
         job_id = payload["job_id"]
@@ -108,38 +101,38 @@ class ACEStepGenerator:
         start_ms = int(time.time() * 1000)
 
         try:
-            print(f"[ACEStep] Generating job {job_id}: prompt='{prompt[:60]}', duration={duration}s, seed={seed}")
+            # Fold lyrics into prompt if provided
+            full_prompt = f"{prompt}. Lyrics theme: {lyrics}" if lyrics else prompt
 
-            # Run ACE-Step inference
+            print(f"[MusicGen] Generating job {job_id}: prompt='{full_prompt[:80]}', duration={duration}s, seed={seed}")
+
+            # MusicGen generates ~50 tokens/sec at 32kHz
+            max_new_tokens = duration * 50  # 15s→750, 30s→1500, 60s→3000
+
+            torch.manual_seed(seed)
+
+            inputs = self.processor(
+                text=[full_prompt],
+                padding=True,
+                return_tensors="pt",
+            ).to("cuda")
+
             with torch.inference_mode():
-                result = self.pipe(
-                    prompt=prompt,
-                    lyrics=lyrics if lyrics else "",
-                    duration=duration,
-                    seed=seed,
-                    guidance_scale=7.0,
-                    num_inference_steps=30,  # 30 vs 60 default: ~2x faster, quality near identical
+                audio_values = self.model.generate(
+                    **inputs,
+                    max_new_tokens=max_new_tokens,
+                    do_sample=True,
+                    guidance_scale=3.0,
                 )
 
-            # Extract audio array — result format may vary by ACE-Step version
-            if hasattr(result, "audio"):
-                audio_array = result.audio
-                sample_rate = result.sample_rate if hasattr(result, "sample_rate") else 44100
-            elif isinstance(result, (list, tuple)):
-                audio_array, sample_rate = result[0], result[1] if len(result) > 1 else 44100
-            else:
-                audio_array = result
-                sample_rate = 44100
+            # audio_values: [batch=1, channels=1, samples]
+            audio_np = audio_values[0, 0].cpu().numpy()  # shape: (samples,)
+
+            print(f"[MusicGen] Generated {len(audio_np)} samples at {self.sample_rate}Hz ({len(audio_np)/self.sample_rate:.1f}s)")
 
             # Encode to MP3 via WAV intermediate + pydub
-            import numpy as np
+            import soundfile as sf
             from pydub import AudioSegment
-
-            # Ensure numpy array
-            if hasattr(audio_array, "cpu"):
-                audio_np = audio_array.cpu().numpy()
-            else:
-                audio_np = np.array(audio_array)
 
             # Normalize to int16
             audio_np = audio_np.squeeze()
@@ -148,7 +141,7 @@ class ACEStepGenerator:
 
             # Write to WAV buffer
             wav_buf = io.BytesIO()
-            sf.write(wav_buf, audio_np, sample_rate, format="WAV", subtype="PCM_16")
+            sf.write(wav_buf, audio_np, self.sample_rate, format="WAV", subtype="PCM_16")
             wav_buf.seek(0)
 
             # Convert WAV → MP3 (192kbps) via pydub
@@ -157,7 +150,7 @@ class ACEStepGenerator:
             audio_segment.export(mp3_buf, format="mp3", bitrate="192k")
             mp3_bytes = mp3_buf.getvalue()
 
-            print(f"[ACEStep] Encoded MP3: {len(mp3_bytes) // 1024}KB")
+            print(f"[MusicGen] Encoded MP3: {len(mp3_bytes) // 1024}KB")
 
             # Upload to storage (Shelby testnet OR Cloudflare R2)
             storage_provider = os.environ.get("STORAGE_PROVIDER", "r2").lower()
@@ -169,7 +162,7 @@ class ACEStepGenerator:
 
             generation_time_ms = int(time.time() * 1000) - start_ms
 
-            print(f"[ACEStep] Job {job_id} completed in {generation_time_ms}ms → {audio_url}")
+            print(f"[MusicGen] Job {job_id} completed in {generation_time_ms}ms → {audio_url}")
 
             # Notify webhook
             _call_webhook(webhook_url, {
@@ -185,7 +178,7 @@ class ACEStepGenerator:
         except Exception as exc:
             import traceback
             tb = traceback.format_exc()
-            print(f"[ACEStep] Job {job_id} FAILED: {exc}\n{tb}")
+            print(f"[MusicGen] Job {job_id} FAILED: {exc}\n{tb}")
 
             _call_webhook(webhook_url, {
                 "job_id": job_id,
@@ -212,7 +205,6 @@ def generate(payload: dict):
     Public HTTP endpoint called by Next.js /api/generate.
     Returns immediately and spawns the GPU generation as a background task.
     """
-    import json
 
     # Validate required fields
     required = ["prompt", "job_id", "webhook_url"]
@@ -291,19 +283,11 @@ def _upload_to_shelby(mp3_bytes: bytes, job_id: str) -> str:
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
-    # Step 1: Register blob on-chain via Shelby SDK (requires Aptos signer)
-    # NOTE: For testnet, registration may be optional or handled by the gateway.
-    # We attempt direct PUT first (simpler), fall back to multipart if needed.
-
     # Direct single-part PUT for files ≤ 128MB (MP3 ringtones are tiny, <10MB)
     put_url = f"{base_url}/v1/blobs/{account}/{encoded_name}"
-
     put_headers = {**headers, "Content-Type": "audio/mpeg"}
 
-    # Shelby requires blob to be registered on-chain first.
-    # Use the SDK via subprocess if available, else use multipart upload endpoint.
     try:
-        # Try direct PUT (works if blob registration is pre-done or not required on testnet)
         resp = requests.put(put_url, data=mp3_bytes, headers=put_headers, timeout=60)
         if resp.status_code in (200, 201, 204):
             print(f"[Shelby] Uploaded via PUT: {put_url}")
@@ -314,7 +298,6 @@ def _upload_to_shelby(mp3_bytes: bytes, job_id: str) -> str:
         print(f"[Shelby] PUT failed: {e}")
 
     # Fallback: multipart upload
-    # Start
     start_url = f"{base_url}/v1/blobs/{account}/{encoded_name}/multipart/start"
     expiration_micros = (int(time.time() * 1000) + expiration_days * 24 * 60 * 60 * 1000) * 1000
     start_body = json.dumps({"expirationMicros": expiration_micros})
@@ -322,13 +305,11 @@ def _upload_to_shelby(mp3_bytes: bytes, job_id: str) -> str:
     start_resp.raise_for_status()
     upload_id = start_resp.json().get("uploadId") or start_resp.json().get("upload_id", "")
 
-    # Upload single part
     part_url = f"{base_url}/v1/blobs/{account}/{encoded_name}/multipart/{upload_id}/1"
     part_resp = requests.put(part_url, data=mp3_bytes, headers={**headers, "Content-Type": "application/octet-stream"}, timeout=60)
     part_resp.raise_for_status()
     etag = part_resp.headers.get("ETag", "")
 
-    # Complete
     complete_url = f"{base_url}/v1/blobs/{account}/{encoded_name}/multipart/{upload_id}/complete"
     complete_body = json.dumps({"parts": [{"partNumber": 1, "etag": etag}]})
     complete_resp = requests.post(complete_url, data=complete_body, headers=headers, timeout=30)
@@ -356,14 +337,14 @@ def _call_webhook(webhook_url: str, payload: dict, max_retries: int = 3):
         try:
             resp = requests.post(webhook_url, json=payload, headers=headers, timeout=15)
             resp.raise_for_status()
-            print(f"[ACEStep] Webhook delivered (attempt {attempt + 1}): {resp.status_code}")
+            print(f"[MusicGen] Webhook delivered (attempt {attempt + 1}): {resp.status_code}")
             return
         except Exception as e:
-            print(f"[ACEStep] Webhook attempt {attempt + 1} failed: {e}")
+            print(f"[MusicGen] Webhook attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
                 time.sleep(2 ** attempt)
 
-    print(f"[ACEStep] WARNING: All webhook attempts failed for {payload.get('job_id')}")
+    print(f"[MusicGen] WARNING: All webhook attempts failed for {payload.get('job_id')}")
 
 
 # ============================================================
