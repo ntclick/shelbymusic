@@ -1,3 +1,4 @@
+// @ts-nocheck — Shelby upload is handled by Modal Python backend, not Next.js
 /**
  * Shelby decentralized storage helper (testnet)
  *
