@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { unstable_noStore as noStore } from 'next/cache'
 import { getJobStatus, markJobFailed } from '@/lib/storage'
 
 export const dynamic = 'force-dynamic'
@@ -9,6 +10,7 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { jobId: string } }
 ) {
+  noStore() // Opt out of Next.js data cache — always read fresh from Supabase
   const { jobId } = params
   if (!jobId) return NextResponse.json({ error: 'Invalid job ID' }, { status: 400 })
 

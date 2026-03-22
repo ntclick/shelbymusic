@@ -26,7 +26,14 @@ export function getSupabaseAdminClient(): SupabaseClient {
   }
 
   if (!globalSupabaseAdmin) {
-    globalSupabaseAdmin = createClient(supabaseUrl, serviceRoleKey)
+    globalSupabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      global: {
+        // Disable Next.js 14 data cache for all Supabase requests.
+        // Without this, Next.js caches Supabase fetch() calls and the
+        // status route returns stale 'processing' even after completion.
+        fetch: (url, init) => fetch(url, { ...init, cache: 'no-store' }),
+      },
+    })
   }
   return globalSupabaseAdmin
 }
