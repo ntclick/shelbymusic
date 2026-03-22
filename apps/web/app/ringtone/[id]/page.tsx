@@ -60,7 +60,7 @@ export default async function RingtonePage({ params }: RingtonePageProps) {
             {formatDuration(ringtone.duration_seconds)}
           </span>
           <span className="text-xs text-brand-text">·</span>
-          <span className="text-xs text-brand-text">{timeAgo(ringtone.created_at)}</span>
+          <span className="text-xs text-brand-text" suppressHydrationWarning>{timeAgo(ringtone.created_at)}</span>
         </div>
         <h1 className="text-2xl font-bold text-brand-white">{displayTitle}</h1>
       </div>

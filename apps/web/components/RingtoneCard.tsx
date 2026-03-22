@@ -49,7 +49,7 @@ export function RingtoneCard({ ringtone }: RingtoneCardProps) {
       <p className="text-brand-white text-sm font-medium mb-1 leading-snug">
         {displayTitle}
       </p>
-      <p className="text-xs text-brand-text mb-4">
+      <p className="text-xs text-brand-text mb-4" suppressHydrationWarning>
         {formatDuration(ringtone.duration_seconds)} · {timeAgo(ringtone.created_at)}
       </p>
 
