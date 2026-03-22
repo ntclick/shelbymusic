@@ -283,7 +283,12 @@ def _upload_to_shelby_via_node(mp3_bytes: bytes, job_id: str) -> str:
     """Upload MP3 to Shelby testnet by running Node.js shelby-upload.mjs inside the Modal container."""
     import subprocess
     import json
-    import tempfile
+
+    # Verify required env vars are present before spawning Node
+    missing = [k for k in ("SHELBY_PRIVATE_KEY", "SHELBY_API_KEY", "SHELBY_ACCOUNT_ADDRESS")
+               if not os.environ.get(k)]
+    if missing:
+        raise RuntimeError(f"Missing Modal secrets: {', '.join(missing)}. Add them to phonezoo-secrets.")
 
     # Write the upload script to the worker dir (once per container is fine)
     script_path = "/shelby-worker/shelby-upload.mjs"
@@ -296,11 +301,15 @@ def _upload_to_shelby_via_node(mp3_bytes: bytes, job_id: str) -> str:
         input=mp3_bytes,
         capture_output=True,
         timeout=180,  # 3 min: blockchain registration ~10-30s + upload
+        env=dict(os.environ),  # explicitly forward all Modal env vars to subprocess
     )
 
+    stderr = result.stderr.decode(errors="replace")
+    if stderr:
+        print(f"[Shelby] node stderr: {stderr[:300]}")
+
     if result.returncode != 0:
-        stderr = result.stderr.decode(errors="replace")[:500]
-        raise RuntimeError(f"shelby-upload.mjs failed (exit {result.returncode}): {stderr}")
+        raise RuntimeError(f"shelby-upload.mjs failed (exit {result.returncode}): {stderr[:500]}")
 
     data = json.loads(result.stdout.decode())
     return data["url"]
