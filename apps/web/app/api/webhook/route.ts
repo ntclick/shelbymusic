@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { completeJob, markJobFailed } from '@/lib/storage'
-import { uploadViaProcess, uploadToShelby, isShelbyConfigured } from '@/lib/shelby'
-
-// On Vercel (serverless), child_process.spawn is not available — use SDK directly.
-// On local Windows dev, use child process to isolate got v11 DNS crash.
-const shelbyUpload = process.env.VERCEL ? uploadToShelby : uploadViaProcess
+import { uploadViaProcess } from '@/lib/shelby'
 import type { WebhookPayload } from '@/types'
 
 export async function POST(req: NextRequest) {
@@ -27,31 +23,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (payload.status === 'completed') {
-    let audioUrl = payload.audio_url || ''
-
-    if (payload.audio_data) {
-      // Base64 MP3 sent inline (STORAGE_PROVIDER=shelby) — upload directly to Shelby
-      try {
-        const mp3Buffer = Buffer.from(payload.audio_data, 'base64')
-        const { url: shelbyUrl, sizeKb } = await shelbyUpload(mp3Buffer, payload.job_id)
-        audioUrl = shelbyUrl
-        console.log(`[webhook] Uploaded ${sizeKb}KB to Shelby: ${shelbyUrl}`)
-      } catch (err) {
-        console.error('[webhook] Shelby upload failed:', err)
-      }
-    } else if (isShelbyConfigured() && audioUrl) {
-      // R2 URL → download → re-upload to Shelby
-      try {
-        const r2Res = await fetch(audioUrl)
-        if (!r2Res.ok) throw new Error(`R2 download failed: ${r2Res.status}`)
-        const mp3Buffer = Buffer.from(await r2Res.arrayBuffer())
-        const { url: shelbyUrl, sizeKb } = await shelbyUpload(mp3Buffer, payload.job_id)
-        audioUrl = shelbyUrl
-        console.log(`[webhook] Re-uploaded ${sizeKb}KB to Shelby: ${shelbyUrl}`)
-      } catch (err) {
-        console.error('[webhook] Shelby re-upload failed, keeping R2 URL:', err)
-      }
-    }
+    const audioUrl = payload.audio_url || ''
 
     await completeJob(payload.job_id, {
       audio_url: audioUrl,
