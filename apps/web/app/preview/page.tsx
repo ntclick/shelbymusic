@@ -5,6 +5,15 @@ import { AudioPlayer } from '@/components/ui/AudioPlayer'
 
 export const metadata: Metadata = { title: 'Audio Preview | PhoneZoo' }
 
+function isAllowedAudioUrl(url: string): boolean {
+  if (!url.startsWith('https://')) return false
+  if (url.includes('shelby.xyz')) return true
+  if (url.includes('r2.dev') || url.includes('cloudflarestorage.com')) return true
+  const r2Public = process.env.NEXT_PUBLIC_R2_PUBLIC_URL
+  if (r2Public && url.startsWith(r2Public)) return true
+  return false
+}
+
 export default function PreviewPage({
   searchParams,
 }: {
@@ -12,10 +21,12 @@ export default function PreviewPage({
 }) {
   const url = searchParams.url || ''
 
-  if (!url) {
+  if (!url || !isAllowedAudioUrl(url)) {
     return (
       <main className="min-h-screen flex items-center justify-center p-8">
-        <p className="text-brand-text text-sm">No audio URL provided.</p>
+        <p className="text-brand-text text-sm">
+          {url ? 'Invalid or disallowed audio URL.' : 'No audio URL provided.'}
+        </p>
       </main>
     )
   }

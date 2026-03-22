@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+const RATE_LIMIT_AI = parseInt(process.env.RATE_LIMIT_AI_PER_HOUR || '10')
+const aiRateLimitMap = new Map<string, number[]>()
+
+function isAiRateLimited(ip: string): boolean {
+  const now = Date.now()
+  const windowMs = 60 * 60 * 1000
+  const timestamps = (aiRateLimitMap.get(ip) || []).filter(t => now - t < windowMs)
+  if (timestamps.length >= RATE_LIMIT_AI) return true
+  timestamps.push(now)
+  aiRateLimitMap.set(ip, timestamps)
+  return false
+}
+
 const SYSTEM_PROMPT = `You are the most celebrated music composer and songwriter in history — combining Hans Zimmer's orchestral depth, Pharrell Williams's genre intuition, Max Martin's pop instincts, and Ennio Morricone's emotional storytelling.
 
 Your task: Transform ANY music idea (in any language) into a precise AI music generation prompt.
@@ -12,6 +25,14 @@ Rules:
 - Think like you're briefing a world-class studio session musician`
 
 export async function POST(req: NextRequest) {
+  const ip =
+    req.headers.get('x-real-ip') ||
+    req.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim() ||
+    'unknown'
+  if (isAiRateLimited(ip)) {
+    return NextResponse.json({ error: 'Too many requests. Please wait before trying again.' }, { status: 429 })
+  }
+
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) {
     return NextResponse.json({ error: 'DEEPSEEK_API_KEY not configured' }, { status: 503 })

@@ -27,7 +27,10 @@ function isRateLimited(ip: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  const ip =
+    req.headers.get('x-real-ip') ||
+    req.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim() ||
+    'unknown'
   if (isRateLimited(ip)) {
     return NextResponse.json({ error: 'Too many requests. Please wait before generating again.' }, { status: 429 })
   }

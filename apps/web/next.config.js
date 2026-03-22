@@ -12,6 +12,21 @@ const nextConfig = {
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-XSS-Protection', value: '1; mode=block' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
+          {
+            key: 'Content-Security-Policy',
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              "style-src 'self' 'unsafe-inline'",
+              "media-src 'self' https://api.testnet.shelby.xyz https://api.shelbynet.shelby.xyz https://pub-7cafaf04d6324dc1acc356106790287a.r2.dev blob:",
+              "connect-src 'self' https://api.testnet.shelby.xyz https://*.supabase.co wss://*.supabase.co",
+              "img-src 'self' data:",
+              "frame-ancestors 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
+            ].join('; '),
+          },
         ],
       },
       {

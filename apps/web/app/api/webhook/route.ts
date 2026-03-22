@@ -6,11 +6,13 @@ import type { WebhookPayload } from '@/types'
 
 export async function POST(req: NextRequest) {
   const webhookSecret = process.env.WEBHOOK_SECRET
-  if (webhookSecret) {
-    const received = req.headers.get('x-webhook-secret')
-    if (received !== webhookSecret) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+  if (!webhookSecret) {
+    console.error('[webhook] WEBHOOK_SECRET not configured — rejecting all requests')
+    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 })
+  }
+  const received = req.headers.get('x-webhook-secret')
+  if (received !== webhookSecret) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   let payload: WebhookPayload
