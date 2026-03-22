@@ -40,6 +40,41 @@ const chunks = []
 for await (const chunk of process.stdin) chunks.push(chunk)
 const audioBuffer = Buffer.concat(chunks)
 
+// Pre-resolve Shelby hostname via Cloudflare DoH (1.1.1.1 is a literal IP).
+// GeoDNS may return different IPs depending on location — pin to a known-working IP.
+const shelbyHost = `api.${process.env.SHELBY_NETWORK || 'testnet'}.shelby.xyz`
+let shelbyIP = null
+try {
+  const res = await fetch(
+    `https://1.1.1.1/dns-query?name=${encodeURIComponent(shelbyHost)}&type=A`,
+    { headers: { Accept: 'application/dns-json' } }
+  )
+  const data = await res.json()
+  shelbyIP = data.Answer?.find(r => r.type === 1)?.data ?? null
+  if (shelbyIP) process.stderr.write(`[dns] ${shelbyHost} → ${shelbyIP}\n`)
+} catch (e) {
+  process.stderr.write(`[dns] DoH failed: ${e.message}\n`)
+}
+
+// Patch dns.lookup only for the Shelby hostname — leaves all other DNS untouched
+// (Aptos SDK uses different hostnames that resolve fine via OS DNS)
+if (shelbyIP) {
+  const _nativeLookup = dns.lookup.bind(dns)
+  const _ip = shelbyIP, _host = shelbyHost
+  dns.lookup = (hostname, options, callback) => {
+    if (hostname === _host) {
+      const cb = typeof options === 'function' ? options : callback
+      const opts = typeof options === 'object' && options !== null ? options : {}
+      opts.all ? cb(null, [{ address: _ip, family: 4 }]) : cb(null, _ip, 4)
+    } else if (typeof options === 'function') {
+      _nativeLookup(hostname, options)
+    } else {
+      _nativeLookup(hostname, options, callback)
+    }
+  }
+  process.stderr.write(`[dns] lookup patched for ${shelbyHost}\n`)
+}
+
 const { Ed25519PrivateKey, Account } = await import('@aptos-labs/ts-sdk')
 const { ShelbyNodeClient } = await import('@shelby-protocol/sdk/node')
 
