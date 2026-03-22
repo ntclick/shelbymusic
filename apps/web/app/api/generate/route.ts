@@ -8,7 +8,7 @@ const GenerateSchema = z.object({
   prompt: z.string().min(3, 'Prompt must be at least 3 characters').max(500, 'Prompt too long'),
   lyrics: z.string().max(2000, 'Lyrics too long').optional().default(''),
   genre: z.string().min(1).max(50),
-  duration: z.number().int().min(5).max(120),
+  duration: z.number().int().min(5).max(30),
   seed: z.number().int().optional(),
   title: z.string().max(200).optional(),
 })

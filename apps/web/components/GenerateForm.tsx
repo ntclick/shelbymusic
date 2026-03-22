@@ -14,13 +14,13 @@ interface GenerateFormProps {
   defaultPrompt?: string
 }
 
-const DURATION_OPTIONS = [15, 30, 60] as const
+const DURATION_OPTIONS = [15, 30] as const
 
 export function GenerateForm({ genres, defaultGenre = 'pop', defaultPrompt = '' }: GenerateFormProps) {
   const [selectedGenre, setSelectedGenre] = useState(defaultGenre)
   const [prompt, setPrompt] = useState(defaultPrompt)
   const [lyrics, setLyrics] = useState('')
-  const [duration, setDuration] = useState<30 | 15 | 60>(30)
+  const [duration, setDuration] = useState<15 | 30>(15)
   const [showLyrics, setShowLyrics] = useState(false)
   const [validationError, setValidationError] = useState('')
   const [isAiWriting, setIsAiWriting] = useState(false)
