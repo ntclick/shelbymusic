@@ -36,7 +36,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Required env vars: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `MODAL_ENDPOINT_URL`, `WEBHOOK_SECRET`, `SHELBY_*`, `R2_*`.
+Required env vars: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `MODAL_ENDPOINT_URL`, `WEBHOOK_SECRET`, `SHELBY_*`.
 
 ## Deploy GPU Backend
 
