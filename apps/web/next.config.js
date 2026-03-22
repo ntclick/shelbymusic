@@ -22,6 +22,7 @@ const nextConfig = {
               "media-src 'self' https://api.testnet.shelby.xyz https://api.shelbynet.shelby.xyz https://pub-7cafaf04d6324dc1acc356106790287a.r2.dev blob:",
               "connect-src 'self' https://api.testnet.shelby.xyz https://*.supabase.co wss://*.supabase.co",
               "img-src 'self' data:",
+              "frame-src https://www.youtube.com https://www.youtube-nocookie.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

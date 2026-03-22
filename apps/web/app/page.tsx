@@ -54,6 +54,35 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* Demo video */}
+      <section className="space-y-6 text-center">
+        <div className="space-y-2">
+          <h2 className="text-2xl font-bold text-brand-white">See it in action</h2>
+          <p className="text-brand-text text-sm">
+            Watch how PhoneZoo generates a unique ringtone in under 60 seconds.
+          </p>
+        </div>
+        <div className="relative w-full max-w-3xl mx-auto rounded-2xl overflow-hidden border border-bg-border shadow-2xl" style={{ paddingBottom: '56.25%' }}>
+          <iframe
+            src="https://www.youtube.com/embed/NJPHcHqs2SE"
+            title="PhoneZoo Demo"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            className="absolute inset-0 w-full h-full"
+          />
+        </div>
+        <a
+          href="https://shelbymusic.vercel.app/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-bg-border hover:border-brand-orange text-brand-text hover:text-brand-white text-sm font-medium transition-colors"
+        >
+          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+          Live demo — shelbymusic.vercel.app
+          <ArrowRight size={14} />
+        </a>
+      </section>
+
       {/* How it works */}
       <section className="space-y-8">
         <h2 className="text-2xl font-bold text-brand-white text-center">How it works</h2>
