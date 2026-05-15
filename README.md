@@ -2,7 +2,7 @@
 
 Generate unique MP3 ringtones in ~60 seconds using MusicGen AI. Describe the sound you want, pick a genre, and download.
 
-**Live demo:** [shelbymusic.vercel.app](https://shelbymusic.vercel.app) · **Video:** [youtu.be/NJPHcHqs2SE](https://youtu.be/NJPHcHqs2SE)
+**Live demo:** [https://phonezoo.com/music](https://phonezoo.com/music)· **Video:** [youtu.be/NJPHcHqs2SE](https://youtu.be/NJPHcHqs2SE)
 
 ---
 
